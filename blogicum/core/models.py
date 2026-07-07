@@ -10,7 +10,11 @@ class PublishedModel(models.Model):
 
 class DatetimeModel(models.Model):
     """Абстрактная модель. Добавляет дату создания"""
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name='Добавлено',
+        help_text='Снимите галочку, чтобы скрыть публикацию.'
+    )
 
     class Meta:
         abstract = True
