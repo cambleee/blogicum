@@ -9,9 +9,9 @@ class Post(PublishedModel, DatetimeModel):
     title = models.CharField(max_length=256, verbose_name='Заголовок')
     text = models.TextField(verbose_name='Текст')
     pub_date = models.DateTimeField(
-        auto_now_add=True, 
+        auto_now_add=False, 
         verbose_name='Дата и время публикации',
-        help_text='	Если установить дату и время в будущем — можно делать отложенные публикации.'
+        help_text='Если установить дату и время в будущем — можно делать отложенные публикации.'
     )
     author = models.ForeignKey(
         User,
@@ -24,7 +24,7 @@ class Post(PublishedModel, DatetimeModel):
         null=True,
         on_delete=models.SET_NULL,
         related_name='posts',
-        verbose_name='Локация'
+        verbose_name='Местоположение'
     )
     category = models.ForeignKey(
         'Category',
@@ -50,7 +50,6 @@ class Category(PublishedModel, DatetimeModel):
         verbose_name='Идентификатор',
         help_text='Идентификатор страницы для URL; разрешены символы латиницы, цифры, дефис и подчёркивание.'
     )
-
     class Meta:
         verbose_name = 'категория'
         verbose_name_plural = 'Категории' 
@@ -60,7 +59,7 @@ class Category(PublishedModel, DatetimeModel):
     
 
 class Location(PublishedModel, DatetimeModel):
-    name = models.CharField(max_length=256, verbose_name='Местоположение')
+    name = models.CharField(max_length=256, verbose_name='Название места')
 
     class Meta:
         verbose_name = 'местоположение'
