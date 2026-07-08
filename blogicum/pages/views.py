@@ -1,13 +1,16 @@
 from django.shortcuts import render
+from django.views.generic import TemplateView 
 
 
-def about(request):
-    template = 'pages/about.html'
-    return render(request, template)
+class About(TemplateView):
+    # В атрибуте template_name обязательно указывается имя шаблона,
+    # на основе которого будет создана возвращаемая страница.
+    template_name = 'pages/about.html' 
 
-def rules(request):
-    template = 'pages/rules.html'
-    return render(request, template)
+class Rules(TemplateView):
+    # В атрибуте template_name обязательно указывается имя шаблона,
+    # на основе которого будет создана возвращаемая страница.
+    template_name = 'pages/rules.html' 
 
 def page_not_found(request, exception):
     # Переменная exception содержит отладочную информацию; 
