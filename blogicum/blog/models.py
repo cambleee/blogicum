@@ -5,9 +5,22 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+class Comment(PublishedModel, DatetimeModel):
+    text = models.TextField('Текст комментария')
+    post = models.ForeignKey(
+        'Post', 
+        on_delete=models.CASCADE,
+        related_name='comments',
+    )
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    class Meta:
+        ordering = ('created_at',) 
+
 class Post(PublishedModel, DatetimeModel):
     title = models.CharField(max_length=256, verbose_name='Заголовок')
     text = models.TextField(verbose_name='Текст')
+    image = models.ImageField('Фото', upload_to='posts_images', blank=True)
     pub_date = models.DateTimeField(
         auto_now_add=False, 
         verbose_name='Дата и время публикации',

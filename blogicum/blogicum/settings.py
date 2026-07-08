@@ -34,6 +34,8 @@ CSRF_FAILURE_VIEW = 'pages.views.csrf_failure'
 
 MEDIA_ROOT = BASE_DIR / 'media' 
 
+LOGIN_REDIRECT_URL = 'blog:index' 
+LOGIN_URL = 'login' 
 
 # Подключаем бэкенд filebased.EmailBackend:
 EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
@@ -51,6 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'blog.apps.BlogConfig',
     'pages.apps.PagesConfig',
+    'django_bootstrap5',
     'debug_toolbar',
 ]
 
@@ -68,6 +71,8 @@ MIDDLEWARE = [
 INTERNAL_IPS = [
     "127.0.0.1",
 ]
+
+
 
 ROOT_URLCONF = 'blogicum.urls'
 
