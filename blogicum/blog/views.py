@@ -1,10 +1,10 @@
 from django.shortcuts import render, get_list_or_404, get_object_or_404
-# from django.http import Http404
+# from django.http import HttpResponse
 # from django.utils import timezone
 from datetime import datetime
 
-from .data import get_posts, get_posts_by_category, get_post_by_id
 from .models import Post, Category
+
 
 # Create your views here.
 def index(request):
