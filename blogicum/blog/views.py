@@ -1,17 +1,17 @@
-from django.shortcuts import render, get_list_or_404, get_object_or_404
-# from django.http import HttpResponse
-# from django.utils import timezone
-from datetime import datetime
+from django.shortcuts import get_object_or_404
 from django.views.generic import (
     CreateView, DeleteView, DetailView, ListView, UpdateView
 )
 from django.core.paginator import Paginator
 from django.core.exceptions import PermissionDenied
 from .models import Post, Category, User, Comment
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy, reverse
 from .forms import CommentForm, PostForm, CustomUserCreationForm
+
+from django.db.models import Count
+from django.utils import timezone
+from django.shortcuts import redirect
 
 
 class PostDeleteView(LoginRequiredMixin, DeleteView):
@@ -23,55 +23,35 @@ class PostDeleteView(LoginRequiredMixin, DeleteView):
     def dispatch(self, request, *args, **kwargs):
         post = self.get_object()
         if post.author != request.user:
-            raise PermissionDenied("Вы можете удалять только свои публикации")
+            return redirect('blog:post_detail', pk=post.pk)
         return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
         return reverse('blog:profile', kwargs={'username': self.request.user.username})
     
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # Записываем в переменную form пустой объект формы.
-        context['form'] = PostForm()
-        # Запрашиваем все поздравления для выбранного дня рождения.
-        context['comments'] = (
-            # Дополнительно подгружаем авторов комментариев,
-            # чтобы избежать множества запросов к БД.
-            self.object.comments.select_related('author')
-        )
-        return context 
-
 class PostUpdateView(LoginRequiredMixin, UpdateView):
-    post_obj = None
     model = Post
-    template_name = 'blog/create.html'  # свой шаблон для формы поста, не comment.html
+    template_name = 'blog/create.html'
     form_class = PostForm
 
     def dispatch(self, request, *args, **kwargs):
         post = self.get_object()
         if post.author != request.user:
-            raise PermissionDenied("Вы можете редактировать только свои публикации")
+            return redirect('blog:post_detail', pk=post.pk)
         return super().dispatch(request, *args, **kwargs)
 
     def get_success_url(self):
         return reverse('blog:profile', kwargs={'username': self.request.user.username})
-    
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Записываем в переменную form пустой объект формы.
-        context['form'] = PostForm()
-        # Запрашиваем все поздравления для выбранного дня рождения.
-        context['comments'] = (
-            # Дополнительно подгружаем авторов комментариев,
-            # чтобы избежать множества запросов к БД.
-            self.object.comments.select_related('author')
-        )
-        return context 
+        context['comments'] = self.object.comments.select_related('author')
+        return context
 
 class RegistrationView(CreateView):
     form_class = CustomUserCreationForm
     template_name = 'registration/registration_form.html'
-    success_url = reverse_lazy('pages:homepage')
+    success_url = reverse_lazy('blog:index')
 
 class PostCreateView(LoginRequiredMixin, CreateView):
     model = Post
@@ -94,6 +74,9 @@ class CommentUpdateView(LoginRequiredMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         self.post_obj = get_object_or_404(Post, pk=kwargs['post_id'])
+        comment = get_object_or_404(Comment, pk=kwargs['comment_id'])
+        if comment.author != request.user:
+            return redirect('blog:post_detail', pk=self.post_obj.pk)
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
@@ -139,7 +122,7 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
 class UserUpdateView(LoginRequiredMixin, UpdateView):
     model = User
     template_name = 'blog/user.html'
-    fields = ['first_name', 'last_name', 'username','email']
+    fields = ['first_name', 'last_name', 'username', 'email']
     slug_field = 'username'
     slug_url_kwarg = 'username'
 
@@ -150,19 +133,36 @@ class UserUpdateView(LoginRequiredMixin, UpdateView):
         return obj
 
     def get_success_url(self):
-        return reverse('blog:profile', kwargs={'username': self.request.user.username})
-
+        # self.object уже содержит актуальные (сохранённые) данные после form_valid
+        return reverse('blog:profile', kwargs={'username': self.object.username})
+    
 class UserDetailView(DetailView):
     model = User
     template_name = 'blog/profile.html'
     slug_field = 'username'
     slug_url_kwarg = 'username'
     context_object_name = 'profile'
-    paginate_by = 10  # сколько постов на страницу
+    paginate_by = 10
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        posts = self.object.posts.all()  # проверь related_name у Post.author
+
+        posts = self.object.posts.select_related(
+            'author', 'location', 'category'
+        )
+
+        # если смотрит не сам автор — скрываем неопубликованное
+        if self.request.user != self.object:
+            posts = posts.filter(
+                is_published=True,
+                category__is_published=True,
+                pub_date__lte=timezone.now(),
+            )
+
+        posts = posts.annotate(
+            comment_count=Count('comments')
+        ).order_by('-pub_date')
+
         paginator = Paginator(posts, self.paginate_by)
         page_number = self.request.GET.get('page')
         context['page_obj'] = paginator.get_page(page_number)
@@ -170,57 +170,76 @@ class UserDetailView(DetailView):
     
 class PostsListView(ListView):
     model = Post
-    ordering = 'id'
-    paginate_by=10
+    ordering = '-pub_date'  # обычно посты сортируют по дате публикации, а не id
+    paginate_by = 10
     template_name = 'blog/index.html'
+
+    def get_queryset(self):
+        return Post.objects.select_related(
+            'author', 'location', 'category'
+        ).filter(
+            is_published=True,
+            category__is_published=True,
+            pub_date__lte=timezone.now(),
+        ).annotate(
+            comment_count=Count('comments')
+        ).order_by('-pub_date')
+
+
 
 class PostDetailView(DetailView):
     model = Post
     template_name = 'blog/detail.html'
+    pk_url_kwarg = 'pk' 
+
+    def get_object(self, queryset=None):
+        post = get_object_or_404(Post, pk=self.kwargs['pk'])
+        if post.author == self.request.user:
+            # автор видит свой пост в любом случае
+            return post
+        # для всех остальных — только опубликованные посты
+        post = get_object_or_404(
+            Post,
+            pk=self.kwargs['pk'],
+            is_published=True,
+            pub_date__lte=timezone.now(),
+            category__is_published=True,
+        )
+        return post
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = CommentForm()
+        context['comments'] = self.object.comments.select_related('author')
+        return context
+
+class CategoryPostsListView(ListView):
+    model = Post
+    template_name = 'blog/category.html'
+    paginate_by = 10
+
+    def get_category(self):
+        # Кэшируем, чтобы не делать запрос дважды (в get_queryset и get_context_data)
+        if not hasattr(self, '_category'):
+            self._category = get_object_or_404(
+                Category.objects.filter(is_published=True),
+                slug=self.kwargs['category_slug'],
+            )
+        return self._category
+
+    def get_queryset(self):
+        category = self.get_category()
+        return Post.objects.select_related(
+            'category', 'author', 'location'
+        ).filter(
+            category=category,
+            is_published=True,
+            pub_date__lte=timezone.now(),
+        ).annotate(
+            comment_count=Count('comments')
+        ).order_by('-pub_date')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Записываем в переменную form пустой объект формы.
-        context['form'] = CommentForm()
-        # Запрашиваем все поздравления для выбранного дня рождения.
-        context['comments'] = (
-            # Дополнительно подгружаем авторов комментариев,
-            # чтобы избежать множества запросов к БД.
-            self.object.comments.select_related('author')
-        )
-        return context 
-
-def post_detail(request, id):
-    template = 'blog/detail.html'
-    post = get_object_or_404(
-        Post.objects.select_related('category','author','location').filter(
-        pub_date__lt=datetime.now(),
-        is_published=True,
-        category__is_published=True,
-        pk=id
-        )
-    )
-    context = {'post': post}
-    return render(request, template, context)
-
-
-def category_posts(request, category_slug):
-    template = 'blog/category.html'
-    posts = get_list_or_404(
-        Post.objects.select_related('category','author','location').filter(
-        category__slug=category_slug,
-        is_published=True,
-        pub_date__lt=datetime.now()
-        )   
-    )
-    category = get_object_or_404(
-        Category.objects.values('title', 'description').filter(
-            slug=category_slug,
-            is_published=True
-        )[:1]
-    )
-    context = {
-        'post_list': posts,
-        'category': category,
-    }
-    return render(request, template, context)
+        context['category'] = self.get_category()
+        return context
